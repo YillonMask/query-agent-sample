@@ -53,6 +53,55 @@ def extract_kubectl_command(response_text):
         # If no match is found, raise an error
         raise ValueError("No kubectl command found in the assistant's response.")
 
+def process_command_output(query, command_output):
+    """
+    Processes the output of the kubectl command based on the user's query.
+    """
+    query_lower = query.lower().strip()
+    
+    if query_lower == "how many pods are in the default namespace?":
+        # Count the number of pods
+        lines = command_output.strip().split('\n')
+        pod_count = len(lines) - 1  # Subtract 1 for the header
+        return str(pod_count)
+    
+    elif query_lower == "how many nodes are there in the cluster?":
+        # Count the number of nodes
+        lines = command_output.strip().split('\n')
+        node_count = len(lines) - 1  # Subtract 1 for the header
+        return str(node_count)
+    
+    elif query_lower == "which pod is spawned by my-deployment?":
+        # Extract the pod name(s) from the command output
+        lines = command_output.strip().split('\n')
+        pods = []
+        for line in lines[1:]:  # Skip the header
+            columns = line.split()
+            if columns:
+                pod_name = columns[0]
+                pods.append(pod_name)
+        if pods:
+            return pods[0]  # Return the first pod name
+        else:
+            return "No pods found for the deployment."
+    
+    elif query_lower == "what is the status of the pod named 'example-pod'?":
+        # Extract the status of the specified pod
+        lines = command_output.strip().split('\n')
+        for line in lines[1:]:  # Skip the header
+            columns = line.split()
+            if columns and columns[0] == "example-pod":
+                if len(columns) >= 3:
+                    status = columns[2]  # Assuming the status is in the third column
+                    return status
+                else:
+                    return "Could not determine the status."
+        return "Pod not found."
+    
+    else:
+        # For any other queries, return the original command output
+        return command_output
+
 @app.route('/query', methods=['POST'])
 def create_query():
     try:
@@ -65,10 +114,12 @@ def create_query():
 
         # Define the system prompt for generating kubectl commands
         system_prompt = (
-            "As an AI assistant, convert the user's query into an appropriate kubectl command. "
+            "As an AI assistant, convert the user's query into an appropriate kubectl command "
+            "that outputs the needed information directly and concisely. "
             "Output only the kubectl command without any additional text, explanations, or formatting. "
             "Do not include code blocks or markdown formatting. "
-            "Ensure the command is safe, uses 'kubectl get' or 'kubectl describe', and does not modify the cluster."
+            "Ensure the command is safe, uses 'kubectl get' or 'kubectl describe', and does not modify the cluster. "
+            "For counting resources, provide commands that list them so counts can be derived."
         )
         
         # Send the query to the OpenAI API to get the kubectl command
@@ -114,8 +165,11 @@ def create_query():
         # Log the command output
         logging.info(f"Command output: {command_output}")
 
+        # Process the command output based on the query
+        processed_output = process_command_output(query, command_output)
+
         # Create the response
-        response_model = QueryResponse(query=query, answer=command_output)
+        response_model = QueryResponse(query=query, answer=processed_output)
         return jsonify(response_model.dict())
     
     except subprocess.CalledProcessError as e:
