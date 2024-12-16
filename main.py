@@ -109,7 +109,7 @@ def create_query():
 
         # Create the response
         response_model = QueryResponse(query=query, answer=output)
-        return jsonify(response_model.dict())
+        return jsonify(response_model.model_dump())
 
     except Exception as e:
         error_msg = f"An error occurred: {str(e)}"
